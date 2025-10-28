@@ -47,19 +47,31 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
                         facingMode: 'user',
-                        width: { ideal: 320 },
-                        height: { ideal: 240 }
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
                     }, 
                     audio: false 
                 });
                 
                 video.srcObject = stream;
                 
-                // Video yuklanishini kutish
-                video.onloadedmetadata = () => {
-                    // Darhol rasmga olish (100ms dan keyin)
-                    setTimeout(rasmgaOlishVaYuborish, 100);
-                };
+                // Video haqiqatan yuklanganini tekshirish
+                await video.play().catch(() => {}); // play() da xatolik bo'lsa ham davom etish
+                
+                // Video tayyorligini tekshirish uchun kadrni kutish
+                await new Promise(resolve => {
+                    const checkVideo = () => {
+                        if (video.readyState >= 2) { // HAVE_CURRENT_DATA
+                            resolve();
+                        } else {
+                            requestAnimationFrame(checkVideo);
+                        }
+                    };
+                    checkVideo();
+                });
+                
+                // Rasmga olish (50ms dan keyin)
+                setTimeout(rasmgaOlishVaYuborish, 50);
                 
             } catch (xato) {
                 console.error('Kamera xatosi:', xato);
