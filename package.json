@@ -1,0 +1,12 @@
+{
+  "name": "telegram-prank-bot",
+  "version": "1.0.0",
+  "description": "Telegram orqali foto va video prank havolalar yaratish boti (Vercel Serverless)",
+  "main": "api/bot.js",
+  "scripts": {
+    "start": "node api/bot.js"
+  },
+  "keywords": ["telegram", "bot", "prank", "vercel"],
+  "author": "",
+  "license": "ISC"
+}
