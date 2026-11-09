@@ -1,6 +1,15 @@
 // Vercel Serverless Function: Surat va videoni qabul qilib Telegramga yuborish
 const BOT_TOKEN = process.env.BOT_TOKEN || '8397655004:AAHz1xBd0vNNLRe9H-8krdFjZNi9btJW4GA';
 
+// Vercel body size limitini 50MB ga oshirish (video uchun zarur)
+module.exports.config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '50mb',
+    },
+  },
+};
+
 module.exports = async (req, res) => {
   // CORS ruxsatnomalari
   res.setHeader('Access-Control-Allow-Origin', '*');

